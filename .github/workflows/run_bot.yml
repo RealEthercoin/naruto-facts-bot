@@ -42,14 +42,14 @@ jobs:
       # 5. Commit updated facts.json back to repo using PAT_TOKEN
       - name: Commit updated facts.json
         env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+            PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Set remote URL using PAT for authentication
           git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git
 
           git add facts.json
           git commit -m "Update posted facts [skip ci]" || echo "No changes to commit"
           git push origin HEAD:main
+
