@@ -1,10 +1,10 @@
 name: Naruto/Boruto Facts Bot
 
-# Schedule: approx every 85 minutes using 0 and 25 past the hour
+# Schedule: approx every 85 minutes (0 and 25 past the hour)
 on:
   schedule:
-    - cron: '0 * * * *'   # Every hour at minute 0
-    - cron: '25 * * * *'  # Every hour at minute 25
+    - cron: '0 * * * *'
+    - cron: '25 * * * *'
   workflow_dispatch:      # Allows manual trigger
 
 jobs:
@@ -39,16 +39,16 @@ jobs:
         run: |
           python bot.py
 
-      # 5. Commit updated facts.json back to repo using GITHUB_TOKEN
+      # 5. Commit updated facts.json back to repo using PAT_TOKEN
       - name: Commit updated facts.json
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Set remote URL with token authentication
-          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          # Set remote URL using PAT for authentication
+          git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git
 
           git add facts.json
           git commit -m "Update posted facts [skip ci]" || echo "No changes to commit"
