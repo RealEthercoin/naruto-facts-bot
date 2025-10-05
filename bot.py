@@ -28,117 +28,108 @@ for var_name, var_value in required_vars.items():
         raise ValueError(f"❌ {var_name} is not set in .env file")
 
 # Initialize OpenAI client
-try:
-    openai.api_key = OPENAI_API_KEY
-    client = openai.OpenAI(api_key=OPENAI_API_KEY)
-    client.models.list()  # Test API key
-    print("✅ OpenAI authentication successful")
-except openai.AuthenticationError as e:
-    raise ValueError(f"❌ OpenAI authentication failed: {e}")
-except Exception as e:
-    raise ValueError(f"❌ OpenAI initialization failed: {e}")
+openai.api_key = OPENAI_API_KEY
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-# Initialize Tweepy v2 Client with OAuth 1.0a User Context
-try:
-    twitter = tweepy.Client(
-        consumer_key=TWITTER_API_KEY,
-        consumer_secret=TWITTER_API_SECRET,
-        access_token=TWITTER_ACCESS_TOKEN,
-        access_token_secret=TWITTER_ACCESS_SECRET,
-        wait_on_rate_limit=True
-    )
-    twitter.get_me()  # Test authentication (requires Basic tier or higher for full access)
-    print("✅ Twitter authentication successful")
-except tweepy.TweepyException as e:
-    raise ValueError(f"❌ Twitter authentication failed: {e}")
+# Initialize Tweepy client
+twitter = tweepy.Client(
+    consumer_key=TWITTER_API_KEY,
+    consumer_secret=TWITTER_API_SECRET,
+    access_token=TWITTER_ACCESS_TOKEN,
+    access_token_secret=TWITTER_ACCESS_SECRET,
+    wait_on_rate_limit=True
+)
 
-HASHTAGS = "#NARUTO #BORUTO"
+HASHTAGS = "#AnimeFacts #Weeb #Otaku"
 FACTS_FILE = "facts.json"
 MODEL_PRIORITY = ["gpt-4o-mini", "gpt-3.5-turbo"]
-FALLBACK_FACT = "Naruto's favorite food is ramen, especially from Ichiraku Ramen!"
+FALLBACK_FACT = "Did you know? The first anime ever created was 'Namakura Gatana' in 1917, making anime over a century old!"
 
 def load_facts():
-    """Load facts from JSON file."""
+    """Load previously posted facts."""
     if os.path.exists(FACTS_FILE):
         try:
             with open(FACTS_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except json.JSONDecodeError as e:
-            print(f"❌ Error reading facts file: {e}")
+        except json.JSONDecodeError:
             return []
     return []
 
 def save_fact(fact):
-    """Save a new fact to the JSON file."""
+    """Save a posted fact."""
     facts = load_facts()
     facts.append(fact)
-    try:
-        with open(FACTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(facts, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        print(f"❌ Error saving fact: {e}")
+    with open(FACTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(facts, f, indent=2, ensure_ascii=False)
 
 def generate_fact(max_retries=3):
-    """Generate a unique fact using OpenAI with retries."""
+    """Generate one unique anime fact."""
     posted_facts = load_facts()
+    recent_facts = posted_facts[-200:] if len(posted_facts) > 0 else []
     prompt = (
-        "Give me one unique, interesting fact about Naruto or Boruto anime/manga. "
-        "Keep it under 240 characters. Do not repeat any facts from this list: "
-        f"{posted_facts[-200:]}"
+        "Give me one unique, interesting fact about any anime or manga (not limited to Naruto or Boruto). "
+        "The fact should be under 240 characters. Avoid repeating facts similar to this list: "
+        f"{recent_facts}"
     )
+
     for model in MODEL_PRIORITY:
         for attempt in range(max_retries):
             try:
                 response = openai.chat.completions.create(
                     model=model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=80,  # Reduced to conserve tokens
+                    max_tokens=100,
                     temperature=0.8
                 )
                 fact = response.choices[0].message.content.strip()
+
+                # Ensure uniqueness
                 if fact in posted_facts:
-                    print(f"⚠️ Fact already posted: {fact}")
+                    print("⚠️ Fact already posted. Retrying...")
                     continue
-                if len(fact) > 240:
-                    print(f"⚠️ Fact too long ({len(fact)} characters), trimming...")
-                    fact = fact[:237] + "..."  # Trim to fit
+
+                # Hard enforce tweet length
+                tweet_preview = f"{fact} {HASHTAGS}"
+                if len(tweet_preview) > 280:
+                    # Try cutting at sentence boundaries or ellipsis cleanly
+                    allowed = 280 - len(HASHTAGS) - 1
+                    if '.' in fact[:allowed]:
+                        fact = fact[:allowed].rsplit('.', 1)[0] + '.'
+                    else:
+                        fact = fact[:allowed - 3].rstrip() + "..."
+                
                 return fact
-            except openai.RateLimitError as e:
-                print(f"⚠️ Rate limit error with {model} (attempt {attempt + 1}/{max_retries}): {e}")
+
+            except openai.error.OpenAIError as e:
+                print(f"❌ OpenAI error: {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(10)  # Wait before retrying
+                    time.sleep(5)
                 continue
-            except openai.AuthenticationError as e:
-                print(f"❌ Authentication error with {model}: {e}")
-                break
-            except openai.OpenAIError as e:
-                print(f"❌ OpenAI error with {model}: {e}")
-                break
-    print("❌ Failed to generate fact with all models")
-    return FALLBACK_FACT  # Use fallback fact if all attempts fail
+
+    print("❌ Failed to generate fact with all models.")
+    return FALLBACK_FACT
 
 def post_fact(fact):
-    """Post a fact to Twitter using v2 API."""
+    """Post fact to Twitter."""
     if not fact:
         print("⚠️ No fact to post.")
         return
+
     tweet_text = f"{fact} {HASHTAGS}"
     if len(tweet_text) > 280:
-        tweet_text = tweet_text[:277] + "..."
+        allowed = 280 - len(HASHTAGS) - 1
+        tweet_text = fact[:allowed - 3].rstrip() + "..." + " " + HASHTAGS
+
     try:
         twitter.create_tweet(text=tweet_text)
         save_fact(fact)
-        print(f"✅ Posted tweet: {tweet_text}")
+        print(f"✅ Tweet posted successfully:\n{tweet_text}")
     except tweepy.TweepyException as e:
-        print(f"❌ Error posting tweet: {e}")
+        print(f"❌ Twitter error: {e}")
 
 def run_bot():
-    """Run the bot to generate and post a fact."""
     fact = generate_fact()
     post_fact(fact)
 
 if __name__ == "__main__":
-    try:
-        run_bot()
-    except Exception as e:
-        print(f"❌ Bot failed: {e}")
+    run_bot()
